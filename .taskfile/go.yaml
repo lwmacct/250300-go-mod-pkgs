@@ -1,0 +1,105 @@
+version: "3"
+
+tasks:
+  default:
+    desc: "golang 的命令行工具"
+    deps:
+      - task: arch:x86_64
+    cmds:
+      - echo "golang 的命令行工具"
+
+  build:
+    desc: "编译发布所有架构"
+    deps:
+      - task: release:x86_64
+    cmds:
+      - echo "编译发布所有架构"
+
+  build:release:x86_64:
+    desc: Build the project for x86_64
+    vars:
+      ARCH: "x86_64"
+      VERSION: "{{.GIT_TAG_LATEST}}-{{.ARCH}}"
+      IMAGE: "{{.GO_APP_PROJECT}}:{{.VERSION}}"
+      REGISTRY: "ghcr.io/{{.NAMESPACE}}"
+    cmds:
+      - |
+        echo "构建项目: {{.GO_APP_NAME}}-{{.VERSION}}"
+        export CGO_ENABLED=0
+        export GOOS=linux
+        export GOARCH=amd64
+        go build -ldflags "{{.GO_BUILD_LDFLAGS}}" -a -installsuffix cgo -o {{.GO_APP_PATH}}-{{.VERSION}} .
+        upx -9 -q {{.GO_APP_PATH}}-{{.VERSION}}
+      - |
+        jq 'del(.credsStore)' ~/.docker/config.json >~/.docker/config.json.tmp && mv ~/.docker/config.json.tmp ~/.docker/config.json
+        docker buildx build --progress plain --builder default --platform {{.ARCH}} -t {{.IMAGE}} --network host -f - --load . <<EOF
+        FROM alpine:latest
+        RUN set -eux; \
+            sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories; \
+            apk add --no-cache tini bash tzdata; \
+            cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime; \
+            echo "Asia/Shanghai" > /etc/timezone; \
+            echo;
+        WORKDIR /apps/data
+        COPY .local/bin/{{.GO_APP_NAME}}-{{.VERSION}} /usr/local/bin/{{.GO_APP_NAME}}
+
+        ENTRYPOINT ["tini", "--"]
+        CMD ["{{.GO_APP_NAME}}", "version", "run"]
+
+        LABEL org.opencontainers.image.source={{.GIT_SOURCE}}
+        LABEL org.opencontainers.image.description="{{.GO_APP_NAME}}"
+        LABEL org.opencontainers.image.licenses=MIT
+        EOF
+      - |
+        docker tag {{.IMAGE}} {{.REGISTRY}}/{{.IMAGE}}
+        docker push {{.REGISTRY}}/{{.IMAGE}}
+
+  build:debug:bin:
+    silent: true
+    desc: "编译调试版本"
+    cmds:
+      - go build -ldflags "{{.GO_BUILD_LDFLAGS_X}}" -o {{.GO_APP_PATH}} .
+
+  run:test:run:
+    desc: "运行 App 命令行"
+    silent: true
+    deps:
+      - task: build:debug:bin
+    vars:
+      STDIN: "Stdin"
+    cmds:
+      - |
+        export ACF_SHOW_TEST=1
+        echo '{{.STDIN}}' | {{.GO_APP_PATH}} test run
+
+
+  run:start:run:
+    desc: "运行 App 命令行"
+    silent: true
+    deps:
+      - task: build:debug:bin
+    vars:
+      SUBCMD: "start run"
+    cmds:
+      - |
+        {{.GO_APP_PATH}} {{.SUBCMD}} --help | grep '\--'  | sed '1d' |  tr '-' '_' | tr '[:lower:]' '[:upper:]' | sed 's/__/ACF_/g'
+        {{.GO_APP_PATH}} {{.SUBCMD}} --help 
+        export ACF_SHOW_TEST=1
+        # env | grep ACF_ # 有敏感信息时请勿使用
+        echo "Stdin" | {{.GO_APP_PATH}} {{.SUBCMD}}
+
+  run:server:run:
+    desc: "运行 App 命令行"
+    silent: true
+    deps:
+      - task: build:debug:bin
+    vars:
+      SUBCMD: "server run"
+    cmds:
+      - |
+        {{.GO_APP_PATH}} {{.SUBCMD}} --help | grep '\--'  | sed '1d' |  tr '-' '_' | tr '[:lower:]' '[:upper:]' | sed 's/__/ACF_/g'
+        {{.GO_APP_PATH}} {{.SUBCMD}} --help 
+        export ACF_SHOW_TEST=1
+        # env | grep ACF_ # 有敏感信息时请勿使用
+        echo "Stdin" | {{.GO_APP_PATH}} {{.SUBCMD}}
+

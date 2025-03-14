@@ -1,0 +1,48 @@
+{
+    "status": "success",
+    "data": {
+        "resultType": "matrix",
+        "result": [
+            {
+                "metric": {
+                    "__name__": "m_250101_cpu_count",
+                    "group": "000-未设置组名",
+                    "ipmi_ip": "10.0.2.1",
+                    "suid": "suid-e82382adf5b9-aaec"
+                },
+                "values": [
+                    [
+                        1736874761,
+                        "1"
+                    ],
+                    [
+                        1736875061,
+                        "1"
+                    ]
+                ]
+            },
+            {
+                "metric": {
+                    "__name__": "m_250101_cpu_count",
+                    "group": "000-未设置组名",
+                    "ipmi_ip": "10.13.137.1",
+                    "suid": "suid-3e6920d25a69-987a"
+                },
+                "values": [
+                    [
+                        1736874761,
+                        "32"
+                    ],
+                    [
+                        1736875061,
+                        "32"
+                    ]
+                ]
+            }
+        ]
+    },
+    "stats": {
+        "seriesFetched": "1510",
+        "executionTimeMsec": 13
+    }
+}
