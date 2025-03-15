@@ -82,7 +82,7 @@ type Opts struct {
 }
 
 type ts struct {
-	Opts *Opts
+	opts *Opts
 
 	H      map[string]any
 	logger *log.Logger
@@ -110,7 +110,7 @@ type tsOpts func(*ts)
 
 func New(opts ...tsOpts) *ts {
 	t := &ts{
-		Opts: &Opts{
+		opts: &Opts{
 			Stdout: true,
 			Level:  3,
 			File:   "",
@@ -135,11 +135,11 @@ func New(opts ...tsOpts) *ts {
 	}
 
 	// 初始化异步处理
-	if t.Opts.AsyncEnabled {
-		t.logChan = make(chan logEntry, t.Opts.AsyncQueueSize)
+	if t.opts.AsyncEnabled {
+		t.logChan = make(chan logEntry, t.opts.AsyncQueueSize)
 
 		// 确定工作线程数
-		workers := t.Opts.AsyncWorkers
+		workers := t.opts.AsyncWorkers
 		if workers <= 0 {
 			workers = 1 // 至少启动一个工作线程
 		}
@@ -151,14 +151,14 @@ func New(opts ...tsOpts) *ts {
 		}
 	}
 
-	if t.Opts.File != "" {
+	if t.opts.File != "" {
 		logger := &lumberjack.Logger{
-			Filename:   t.Opts.File,
-			MaxSize:    t.Opts.RotateMaxSize,
-			MaxBackups: t.Opts.RotateMaxBackups,
-			MaxAge:     t.Opts.RotateMaxAge,
-			Compress:   t.Opts.RotateCompress,
-			LocalTime:  t.Opts.RotateLocalTime,
+			Filename:   t.opts.File,
+			MaxSize:    t.opts.RotateMaxSize,
+			MaxBackups: t.opts.RotateMaxBackups,
+			MaxAge:     t.opts.RotateMaxAge,
+			Compress:   t.opts.RotateCompress,
+			LocalTime:  t.opts.RotateLocalTime,
 		}
 		t.logger = log.New(logger, "", 0)
 	}
@@ -168,7 +168,7 @@ func New(opts ...tsOpts) *ts {
 // 日志文件名, 指定文件名
 func WithFile(file string) tsOpts {
 	return func(t *ts) {
-		t.Opts.File = file
+		t.opts.File = file
 	}
 }
 
@@ -176,19 +176,48 @@ func WithFile(file string) tsOpts {
 func WithFileDefault() tsOpts {
 	return func(t *ts) {
 		execName := filepath.Base(os.Args[0])
-		t.Opts.File = fmt.Sprintf("/var/log/%s.log", execName)
+		t.opts.File = fmt.Sprintf("/var/log/%s.log", execName)
+	}
+}
+
+// WithLevel 设置日志级别
+func WithLevel(level int) tsOpts {
+	return func(t *ts) {
+		t.opts.Level = level
 	}
 }
 
 // 控制是否启用终端颜色显示
 func WithColor(enabled bool) tsOpts {
 	return func(t *ts) {
-		t.Opts.Color = enabled
+		t.opts.Color = enabled
 	}
 }
 
+// WithCallerClip 设置调用路径裁剪
+func WithCallerClip(clip string) tsOpts {
+	return func(t *ts) {
+		t.opts.CallerClip = clip
+	}
+}
+
+func GetOpts() *Opts {
+	return this.opts
+}
+
+func SetNew(opts ...tsOpts) *ts {
+	this.Close()
+	this = New(opts...)
+	return this
+}
+
+// Close 关闭全局日志实例，确保所有日志被处理
+func Close() {
+	this.Close()
+}
+
 func Fatal(fields H) *ts {
-	if this.Opts.Level < g_levelFatal {
+	if this.opts.Level < g_levelFatal {
 		return this
 	}
 
@@ -218,19 +247,9 @@ func Trace(fields H) *ts {
 	return logAt(g_levelTrace, fields, 1)
 }
 
-func SetNew(opts ...tsOpts) *ts {
-	this = New(opts...)
-	return this
-}
-
-// Close 关闭全局日志实例，确保所有日志被处理
-func Close() {
-	this.Close()
-}
-
 // 创建一个通用的日志级别处理函数
 func (t *ts) logAt(level int, fields H, callDepth int) *ts {
-	if t.Opts.Level < level {
+	if t.opts.Level < level {
 		return t
 	}
 	fields["level"] = levelToString(level)
@@ -239,7 +258,7 @@ func (t *ts) logAt(level int, fields H, callDepth int) *ts {
 
 // 记录 fatal 级别日志
 func (t *ts) Fatal(fields H) *ts {
-	if t.Opts.Level < g_levelFatal {
+	if t.opts.Level < g_levelFatal {
 		return t
 	}
 	fields["level"] = levelToString(g_levelFatal)
@@ -275,7 +294,7 @@ func (t *ts) Trace(fields H) *ts {
 
 // 关闭日志系统，确保所有日志都被处理
 func (t *ts) Close() {
-	if t.Opts.AsyncEnabled {
+	if t.opts.AsyncEnabled {
 		close(t.shutdown)
 		t.wg.Wait()
 	}
@@ -285,18 +304,18 @@ func (t *ts) print(fields H, callDepth int) *ts {
 	t.setCaller(fields, callDepth+2)
 
 	// 对于同步日志处理
-	if !t.Opts.AsyncEnabled {
+	if !t.opts.AsyncEnabled {
 		// 生成有颜色的输出（用于终端）
-		coloredOutput := colorizeJSONValues(fields, t.orderedKeys, t.Opts)
+		coloredOutput := colorizeJSONValues(fields, t.orderedKeys, t.opts)
 		// 生成无颜色的输出（用于文件）
 		plainOutput := colorizeJSONValues(fields, t.orderedKeys, &Opts{Color: false})
 
 		// 同步处理日志
-		if t.Opts.File != "" {
+		if t.opts.File != "" {
 			// 文件输出使用无颜色版本
 			t.logger.Println(plainOutput)
 		}
-		if t.Opts.Stdout {
+		if t.opts.Stdout {
 			// 终端输出使用有颜色版本（如果启用了颜色）
 			fmt.Println(coloredOutput)
 		}
@@ -313,7 +332,7 @@ func (t *ts) print(fields H, callDepth int) *ts {
 			// 成功发送到通道
 		default:
 			// 通道已满，输出警告并丢弃
-			if t.Opts.Stdout {
+			if t.opts.Stdout {
 				fmt.Println("警告：日志缓冲区已满，日志被丢弃")
 			}
 		}
@@ -327,7 +346,7 @@ func (t *ts) processLogs() {
 	defer t.wg.Done()
 
 	// 批量处理缓冲区
-	batchSize := t.Opts.AsyncBatchSize
+	batchSize := t.opts.AsyncBatchSize
 	if batchSize <= 0 {
 		batchSize = 32 // 默认批处理大小
 	}
@@ -421,15 +440,15 @@ func (t *ts) processLogs() {
 func (t *ts) processBatch(entries []logEntry) {
 	for _, entry := range entries {
 		// 生成有颜色的输出（用于终端）
-		coloredOutput := colorizeJSONValues(entry.fields, entry.orderedKeys, t.Opts)
+		coloredOutput := colorizeJSONValues(entry.fields, entry.orderedKeys, t.opts)
 		// 生成无颜色的输出（用于文件）
 		plainOutput := colorizeJSONValues(entry.fields, entry.orderedKeys, &Opts{Color: false})
 
-		if t.Opts.File != "" {
+		if t.opts.File != "" {
 			// 文件输出使用无颜色版本
 			t.logger.Println(plainOutput)
 		}
-		if t.Opts.Stdout {
+		if t.opts.Stdout {
 			// 终端输出使用有颜色版本
 			fmt.Println(coloredOutput)
 		}
@@ -439,17 +458,17 @@ func (t *ts) processBatch(entries []logEntry) {
 // IsLevelEnabled 检查指定日志级别是否启用
 // 这允许调用者在创建日志消息前检查级别，避免不必要的对象创建
 func (t *ts) IsLevelEnabled(level int) bool {
-	return t.Opts.Level >= level
+	return t.opts.Level >= level
 }
 
 // GetLevel 返回当前设置的日志级别
 func (t *ts) GetLevel() int {
-	return t.Opts.Level
+	return t.opts.Level
 }
 
 // GetColor 返回当前颜色设置状态
 func (t *ts) GetColor() bool {
-	return t.Opts.Color
+	return t.opts.Color
 }
 
 // 获取格式化的时间，使用缓存减少格式化开销
@@ -494,7 +513,7 @@ func (t *ts) setCaller(fields H, callDepth int) {
 }
 
 func (t *ts) pathClipping(path string) string {
-	if t.Opts.CallerClip == "" {
+	if t.opts.CallerClip == "" {
 		if len(path) > 0 && path[0] == '/' {
 			// 优化: 避免使用 strings.Split 产生的临时切片
 			// 从后向前找到第三个 '/'
@@ -519,7 +538,7 @@ func (t *ts) pathClipping(path string) string {
 		}
 		return path
 	}
-	return strings.Replace(path, t.Opts.CallerClip, "", -1)
+	return strings.Replace(path, t.opts.CallerClip, "", -1)
 }
 
 func colorizeJSONValues(fields H, orderedKeys []string, config *Opts) string {
@@ -622,7 +641,7 @@ func levelToString(level int) string {
 
 // 全局日志公共逻辑函数
 func logAt(level int, fields H, callDepth int) *ts {
-	if this.Opts.Level < level {
+	if this.opts.Level < level {
 		return this
 	}
 

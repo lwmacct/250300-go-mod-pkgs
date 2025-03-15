@@ -28,6 +28,12 @@ func main() {
 	fmt.Printf("Color setting for colorLogger: %v\n", colorLogger.GetColor())
 	colorLogger.Info(mlog.H{"msg": "明确启用颜色的日志"})
 
+	mlog.SetNew(
+		mlog.WithFile("../../.local/log/setNew.log"),
+		mlog.WithColor(false),
+	)
+	mlog.Info(mlog.H{"msg": "使用setNew配置"})
+
 	// 确保在程序退出前等待所有日志处理完成
 	// 首先关闭自定义日志实例
 	noColorLogger.Close()
