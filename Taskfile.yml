@@ -1,0 +1,57 @@
+# https://taskfile.dev
+
+version: "3"
+dotenv: [".env", ".taskfile/.env", ".taskfile/.env.template", "{{.HOME}}/.env"]
+
+vars:
+  DEVELOPER: "https://yuque.com/lwmacct"
+  NAMESPACE: "lwmacct"
+  TIME_NOW:
+    sh: TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S %Z'
+  PATH_LOCAL: ".local"
+  PATH_BIN: "{{.PATH_LOCAL}}/bin"
+  PATH_DATA: "{{.PATH_LOCAL}}/data"
+  PATH_FULL:
+    sh: pwd
+
+  GIT_TAG_LATEST:
+    sh: |
+      _latest_tag=$(git tag --sort=-v:refname | head -n 1 2>/dev/null) || true
+      if [[ "${_latest_tag}" == "" ]]; then
+          git tag v0.0.0 -m "init" 
+          _latest_tag="v0.0.0";
+      fi
+      echo ${_latest_tag}
+  GIT_COMMIT:
+    sh: git log -n 1 --format=%h 2>/dev/null || echo "0000"
+  GIT_SOURCE:
+    sh: |
+      grep <.git/config 'git@github.com' -E | head -n1 | sed 's|.git$||; s|:|/|; s|git@|https://|' | awk '{print $NF}'
+
+tasks:
+  env:
+    desc: "显示环境变量"
+    silent: true
+    cmds:
+      - |
+        echo "DEVELOPER: {{.DEVELOPER}}"
+        echo "NAMESPACE: {{.NAMESPACE}}"
+        echo "TIME_NOW: {{.TIME_NOW}}"
+        echo
+        echo "PATH_LOCAL: {{.PATH_LOCAL}}"
+        echo "PATH_BIN: {{.PATH_BIN}}"
+        echo "PATH_DATA: {{.PATH_DATA}}"
+        echo "PATH_FULL: {{.PATH_FULL}}"
+        echo
+        echo "GIT_TAG_LATEST: {{.GIT_TAG_LATEST}}"
+        echo "GIT_COMMIT: {{.GIT_COMMIT}}"
+        echo "GIT_SOURCE: {{.GIT_SOURCE}}"
+
+includes:
+  git:
+    taskfile: .taskfile/git.yml
+    optional: true
+
+  go:
+    taskfile: .taskfile/go.yml
+    optional: true

@@ -1,0 +1,117 @@
+version: "3"
+
+vars:
+  GO_MODE_NAME:
+    sh: go mod edit -json | jq -r .Module.Path
+  GO_MODE_PROJ:
+    sh: echo "{{.GO_MODE_NAME}}" | awk -F/ '{print $NF}'
+  GO_MODE_APP:
+    sh: echo "{{.GO_MODE_PROJ}}" | cut -d'-' -f2-
+  GO_BUILD_PATH: "{{.PATH_BIN}}/{{.GO_MODE_APP}}"
+  GO_BUILD_LDFLAGS_SW: -s -w
+  GO_BUILD_LDFLAGS_X: >-
+    -X '{{.GO_MODE_NAME}}/app/version.AppRawName={{.GO_MODE_APP}}'
+    -X '{{.GO_MODE_NAME}}/app/version.AppProject={{.GO_MODE_PROJ}}'
+    -X '{{.GO_MODE_NAME}}/app/version.AppVersion={{.GIT_TAG_LATEST}}'
+    -X '{{.GO_MODE_NAME}}/app/version.GitCommit={{.GIT_COMMIT}}'
+    -X '{{.GO_MODE_NAME}}/app/version.BuildTime={{.TIME_NOW}}'
+    -X '{{.GO_MODE_NAME}}/app/version.Developer={{.DEVELOPER}}'
+    -X '{{.GO_MODE_NAME}}/app/version.Workspace={{.PATH_FULL}}'
+  GO_BUILD_LDFLAGS: "{{.GO_BUILD_LDFLAGS_SW}} {{.GO_BUILD_LDFLAGS_X}}"
+
+tasks:
+  default:
+    desc: "golang 的命令行工具"
+    cmds:
+      - echo "golang 的命令行工具"
+      - echo
+      - task: env
+  env:
+    desc: "显示环境变量"
+    silent: true
+    cmds:
+      - |
+        echo "GO_MODE_NAME: {{.GO_MODE_NAME}}"
+        echo "GO_MODE_PROJ: {{.GO_MODE_PROJ}}"
+        echo "GO_MODE_APP: {{.GO_MODE_APP}}"
+        echo "GO_BUILD_LDFLAGS_SW: {{.GO_BUILD_LDFLAGS_SW}}"
+        echo "GO_BUILD_LDFLAGS_X: {{.GO_BUILD_LDFLAGS_X}}"
+  build:
+    desc: "编译发布所有架构"
+    deps:
+      - task: build:release:x86_64
+    cmds:
+      - echo "编译发布所有架构"
+
+  build:release:x86_64:
+    desc: Build the project for x86_64
+    vars:
+      ARCH: "x86_64"
+      VERSION: "{{.GIT_TAG_LATEST}}-{{.ARCH}}"
+      IMAGE: "{{.GO_MODE_PROJ}}:{{.VERSION}}"
+      REGISTRY: "ghcr.io/{{.NAMESPACE}}"
+    cmds:
+      - |
+        echo "构建项目: {{.GO_MODE_APP}}-{{.VERSION}}"
+        export CGO_ENABLED=0
+        export GOOS=linux
+        export GOARCH=amd64
+        go build -ldflags "{{.GO_BUILD_LDFLAGS}}" -a -installsuffix cgo -o {{.GO_BUILD_PATH}}-{{.VERSION}} .
+        upx -9 -q {{.GO_BUILD_PATH}}-{{.VERSION}}
+      - |
+        jq 'del(.credsStore)' ~/.docker/config.json >~/.docker/config.json.tmp && mv ~/.docker/config.json.tmp ~/.docker/config.json
+        docker buildx build --progress plain --builder default --platform {{.ARCH}} -t {{.IMAGE}} --network host -f - --load . <<EOF
+        FROM alpine:latest
+        RUN set -eux; \
+            sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories; \
+            apk add --no-cache tini bash tzdata; \
+            cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime; \
+            echo "Asia/Shanghai" > /etc/timezone; \
+            echo;
+        WORKDIR /apps/data
+        COPY .local/bin/{{.GO_MODE_APP}}-{{.VERSION}} /usr/local/bin/{{.GO_MODE_APP}}
+
+        ENTRYPOINT ["tini", "--"]
+        CMD ["{{.GO_MODE_APP}}", "version", "run"]
+
+        LABEL org.opencontainers.image.source={{.GIT_SOURCE}}
+        LABEL org.opencontainers.image.description="{{.GO_MODE_APP}}"
+        LABEL org.opencontainers.image.licenses=MIT
+        EOF
+      - |
+        docker tag {{.IMAGE}} {{.REGISTRY}}/{{.IMAGE}}
+        docker push {{.REGISTRY}}/{{.IMAGE}}
+
+  build:debug:bin:
+    silent: true
+    desc: "编译调试版本"
+    cmds:
+      - go build -ldflags "{{.GO_BUILD_LDFLAGS_X}}" -o {{.GO_BUILD_PATH}} .
+
+  run:test:run:
+    desc: "运行 App 命令行"
+    silent: true
+    deps:
+      - task: build:debug:bin
+    vars:
+      STDIN: "Stdin"
+    cmds:
+      - |
+        export ACF_SHOW_TEST=1
+        echo '{{.STDIN}}' | {{.GO_BUILD_PATH}} test run
+
+
+  run:start:run:
+    desc: "运行 App 命令行"
+    silent: true
+    deps:
+      - task: build:debug:bin
+    vars:
+      SUBCMD: "start run"
+    cmds:
+      - |
+        {{.GO_BUILD_PATH}} {{.SUBCMD}} --help | grep '\--'  |  tr '-' '_' | tr '[:lower:]' '[:upper:]' | sed 's/__/ACF_/g'
+        {{.GO_BUILD_PATH}} {{.SUBCMD}} --help 
+        export ACF_SHOW_TEST=1
+        # env | grep ACF_ # 有敏感信息时请勿使用
+        echo "Stdin" | {{.GO_BUILD_PATH}} {{.SUBCMD}}
