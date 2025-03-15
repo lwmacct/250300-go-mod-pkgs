@@ -7,15 +7,16 @@ import (
 )
 
 func main() {
+
 	// 使用默认配置（默认启用颜色）输出日志
 	mlog.Info(mlog.H{"msg": "默认日志配置（启用颜色）"})
-
 	// 创建一个禁用颜色的日志实例，并写入文件
 	noColorLogger := mlog.New(
 		mlog.WithColor(false),
 		mlog.WithFile("../../.local/log/no_color.log"),
 	)
-	fmt.Printf("Color setting for noColorLogger: %v\n", noColorLogger.GetColorSetting())
+
+	fmt.Printf("Color setting for noColorLogger: %v\n", noColorLogger.GetColor())
 	noColorLogger.Info(mlog.H{"msg": "禁用颜色的日志"})
 
 	// 创建一个启用颜色的日志实例，并写入文件
@@ -24,7 +25,7 @@ func main() {
 		mlog.WithFile("../../.local/log/with_color.log"),
 	)
 
-	fmt.Printf("Color setting for colorLogger: %v\n", colorLogger.GetColorSetting())
+	fmt.Printf("Color setting for colorLogger: %v\n", colorLogger.GetColor())
 	colorLogger.Info(mlog.H{"msg": "明确启用颜色的日志"})
 
 	// 确保在程序退出前等待所有日志处理完成
