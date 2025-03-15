@@ -175,8 +175,7 @@ func WithFile(file string) tsOpts {
 // 日志文件名, 默认使用程序名
 func WithFileDefault() tsOpts {
 	return func(t *ts) {
-		execName := filepath.Base(os.Args[0])
-		t.opts.File = fmt.Sprintf("/var/log/%s.log", execName)
+		t.opts.File = fmt.Sprintf("/var/log/%s.log", filepath.Base(os.Args[0]))
 	}
 }
 
