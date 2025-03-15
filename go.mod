@@ -1,4 +1,4 @@
-module github.com/lwmacct/250300-go-template-pkgs
+module github.com/lwmacct/250300-go-mod-pkgs
 
 go 1.24.0
 
